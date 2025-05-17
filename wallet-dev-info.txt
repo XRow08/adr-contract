@@ -1,0 +1,8 @@
+Generating a new keypair
+Wrote new keypair to wallet-dev.json
+===========================================================================
+pubkey: FonqvQ2kFpBFLyNddupwJwuDUcfhHctrbJif43mPqEau
+===========================================================================
+Save this seed phrase to recover your new keypair:
+width chaos universe top armor shadow festival manual omit vessel sing feel
+===========================================================================
