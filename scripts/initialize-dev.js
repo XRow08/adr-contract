@@ -26,7 +26,7 @@ async function main() {
     anchor.setProvider(provider);
 
     // ID do programa já deployado
-    const programId = new PublicKey("GKf6NkHokaNXcov4kgPqftFrd9QfJMcgRwaCVSWc5yTz");
+    const programId = new PublicKey("9cDdb8o8hnfZjvKffc9pzGhvcEG7dVjg9yXHMDuL975v");
 
     // Inicializar programa
     const idl = JSON.parse(fs.readFileSync('./target/idl/adr_token_mint.json', 'utf-8'));

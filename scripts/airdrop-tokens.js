@@ -3,7 +3,7 @@ const { mintTo, getOrCreateAssociatedTokenAccount } = require("@solana/spl-token
 const fs = require('fs');
 
 // Valor padrão de tokens a serem enviados
-const DEFAULT_AMOUNT = 100 * 10**9; // 100 tokens (com 9 casas decimais)
+const DEFAULT_AMOUNT = 100 * 10 ** 9; // 100 tokens (com 9 casas decimais)
 
 async function main() {
   try {
@@ -16,30 +16,27 @@ async function main() {
 
     // Obter endereço da carteira destinatária e quantidade
     const recipientWallet = args[0];
-    const amount = args.length > 1 ? parseInt(args[1]) * 10**9 : DEFAULT_AMOUNT;
+    const amount = args.length > 1 ? parseInt(args[1]) * 10 ** 9 : DEFAULT_AMOUNT;
 
     // Carregar configuração
-    const deployInfo = JSON.parse(fs.readFileSync('./deploy-info.json', 'utf-8'));
-    
+    const deployInfo = JSON.parse(fs.readFileSync('./config/deploy-config.json', 'utf-8'));
+
     // Carregar a wallet do admin
     const adminKeypair = Keypair.fromSecretKey(
       Buffer.from(JSON.parse(fs.readFileSync('./wallet-dev.json', 'utf-8')))
     );
-    
-    // Reconstruir o keypair do token mint
-    const paymentTokenMint = Keypair.fromSecretKey(
-      Uint8Array.from(deployInfo.privateKeys.paymentTokenMint)
-    );
-    
+
+    const paymentTokenMint = new PublicKey(deployInfo.paymentTokenMint);
+
     console.log("Preparando airdrop de tokens...");
-    console.log("Token mint:", paymentTokenMint.publicKey.toString());
-    console.log("Admin wallet:", adminKeypair.publicKey.toString());
+    console.log("Token mint:", paymentTokenMint.publicKey);
+    console.log("Admin wallet:", adminKeypair.publicKey);
     console.log("Destinatário:", recipientWallet);
     console.log("Quantidade:", amount);
-    
+
     // Configurar provider
     const connection = new Connection("https://api.devnet.solana.com", "confirmed");
-    
+
     // Criar ou obter a conta associada do destinatário
     console.log("Obtendo conta associada do destinatário...");
     const recipientTokenAccount = await getOrCreateAssociatedTokenAccount(
@@ -48,9 +45,9 @@ async function main() {
       paymentTokenMint.publicKey,
       new PublicKey(recipientWallet)
     );
-    
+
     console.log("Conta do destinatário:", recipientTokenAccount.address.toString());
-    
+
     // Mintar tokens para o destinatário
     console.log(`Mintando ${amount} tokens para o destinatário...`);
     const tx = await mintTo(
@@ -61,11 +58,11 @@ async function main() {
       adminKeypair.publicKey,
       amount
     );
-    
+
     console.log(`Tokens enviados com sucesso!`);
     console.log(`Transação: ${tx}`);
     console.log(`Verificar em: https://explorer.solana.com/tx/${tx}?cluster=devnet`);
-    
+
   } catch (err) {
     console.error("Erro ao enviar tokens:", err);
     throw err;

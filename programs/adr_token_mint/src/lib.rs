@@ -4,7 +4,7 @@ use anchor_spl::{
     token::{Mint, Token, TokenAccount, mint_to, MintTo, approve, Approve, burn, Burn, transfer, Transfer},
 };
 
-declare_id!("GKf6NkHokaNXcov4kgPqftFrd9QfJMcgRwaCVSWc5yTz");
+declare_id!("9cDdb8o8hnfZjvKffc9pzGhvcEG7dVjg9yXHMDuL975v");
 
 // Definir evento para registrar informações de queima de tokens
 #[event]
@@ -19,30 +19,28 @@ pub struct TokenBurnEvent {
 // Enumeração para os diferentes períodos de staking
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
 pub enum StakingPeriod {
-    Days7 = 7,
-    Days14 = 14,
-    Days30 = 30, 
-    Days90 = 90,
-    Days180 = 180,
+    Minutes1 = 1,    // 1 minuto
+    Minutes2 = 2,    // 2 minutos
+    Minutes5 = 5,    // 5 minutos
+    Minutes10 = 10,  // 10 minutos
+    Minutes30 = 30,  // 30 minutos
 }
 
 impl StakingPeriod {
     // Retorna a duração em segundos
     pub fn duration_in_seconds(&self) -> i64 {
         (*self as i64)
-            .checked_mul(24).expect("Overflow em duration_in_seconds")
-            .checked_mul(60).expect("Overflow em duration_in_seconds")
-            .checked_mul(60).expect("Overflow em duration_in_seconds") // dias * horas * minutos * segundos
+            .checked_mul(60).expect("Overflow em duration_in_seconds") // minutos * segundos
     }
     
     // Retorna o multiplicador de recompensa
     pub fn reward_multiplier(&self) -> u64 {
         match self {
-            StakingPeriod::Days7 => 105, // 5% de bônus (105%)
-            StakingPeriod::Days14 => 110, // 10% de bônus
-            StakingPeriod::Days30 => 120, // 20% de bônus
-            StakingPeriod::Days90 => 140, // 40% de bônus
-            StakingPeriod::Days180 => 150, // 50% de bônus (2x)
+            StakingPeriod::Minutes1 => 105,  // 5% de bônus (105%)
+            StakingPeriod::Minutes2 => 110,  // 10% de bônus
+            StakingPeriod::Minutes5 => 120,  // 20% de bônus
+            StakingPeriod::Minutes10 => 140, // 40% de bônus
+            StakingPeriod::Minutes30 => 150, // 50% de bônus
         }
     }
 }
@@ -85,6 +83,22 @@ pub struct EmergencyPauseEvent {
     pub timestamp: i64,
 }
 
+// Adicionar nova estrutura para o contador
+#[account]
+pub struct NftCounter {
+    pub count: u64,  // Contador global de NFTs
+}
+
+#[account]
+pub struct ConfigAccount {
+    pub payment_token_mint: Pubkey,
+    pub admin: Pubkey,
+    pub staking_enabled: bool,
+    pub staking_reward_rate: u64, // Base em pontos percentuais (10000 = 100%)
+    pub max_stake_amount: u64,    // Valor máximo que pode ser colocado em stake
+    pub emergency_paused: bool,   // Flag para pausar o contrato em caso de emergência
+}
+
 #[program]
 pub mod adr_token_mint {
     use super::*;
@@ -119,27 +133,69 @@ pub mod adr_token_mint {
         config.max_stake_amount = 1_000_000 * 10u64.pow(9); // Limite máximo de stake: 1 milhão de tokens
         config.emergency_paused = false; // Inicialmente não pausado
         
+        // Inicializar o contador
+        let counter = &mut ctx.accounts.nft_counter;
+        counter.count = 0;
+        
+        msg!("Coleção inicializada e contador de NFTs zerado");
+        
         Ok(())
     }
 
-    // Mintar um novo NFT na coleção
-    pub fn mint_nft(
-        ctx: Context<MintNFT>,
+
+    // Função atualizada de mint
+    pub fn mint_nft_with_payment(
+        ctx: Context<MintNFTWithPayment>,
         name: String,
         symbol: String,
         uri: String,
+        amount: u64,
     ) -> Result<()> {
-        msg!("Mintando um novo NFT: {}, {}, {}", name, symbol, uri);
-
-        // Armazenar informações na conta de metadados do NFT
+        // Verificar se o sistema está pausado
+        require!(!ctx.accounts.config.emergency_paused, ErrorCode::SystemPaused);
+        
+        // Validar inputs
+        require!(!name.is_empty(), ErrorCode::InvalidInput);
+        require!(!symbol.is_empty(), ErrorCode::InvalidInput);
+        require!(!uri.is_empty(), ErrorCode::InvalidInput);
+        
+        // Verificar saldo do usuário
+        require!(
+            ctx.accounts.payer_payment_token_account.amount >= amount,
+            ErrorCode::InsufficientFunds
+        );
+        
+        // Queimar os tokens como pagamento
+        let burn_ctx = CpiContext::new(
+            ctx.accounts.token_program.to_account_info(),
+            Burn {
+                mint: ctx.accounts.payment_token_mint.to_account_info(),
+                from: ctx.accounts.payer_payment_token_account.to_account_info(),
+                authority: ctx.accounts.payer.to_account_info(),
+            },
+        );
+        
+        burn(burn_ctx, amount)?;
+        
+        // Emitir evento com informações da queima
+        let clock = Clock::get()?;
+        emit!(TokenBurnEvent {
+            payer: ctx.accounts.payer.key(),
+            token_mint: ctx.accounts.payment_token_mint.key(),
+            amount,
+            nft_mint: ctx.accounts.nft_mint.key(),
+            timestamp: clock.unix_timestamp,
+        });
+        
+        // Criar o NFT
         let metadata = &mut ctx.accounts.nft_metadata;
         metadata.name = name;
         metadata.symbol = symbol;
         metadata.uri = uri;
         metadata.authority = ctx.accounts.payer.key();
         metadata.collection = Some(ctx.accounts.collection_metadata.key());
-
-        // Mintar 1 token para o NFT
+        
+        // Mintar o NFT
         let cpi_accounts = MintTo {
             mint: ctx.accounts.nft_mint.to_account_info(),
             to: ctx.accounts.nft_token_account.to_account_info(),
@@ -149,7 +205,11 @@ pub mod adr_token_mint {
         let cpi_program = ctx.accounts.token_program.to_account_info();
         let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
         mint_to(cpi_ctx, 1)?;
-
+        
+        // Incrementar o contador
+        let counter = &mut ctx.accounts.nft_counter;
+        counter.count = counter.count.checked_add(1).ok_or(ErrorCode::MathOverflow)?;
+        
         Ok(())
     }
 
@@ -191,99 +251,6 @@ pub mod adr_token_mint {
         Ok(())
     }
 
-    // Mintar um novo NFT com pagamento (queima de tokens)
-    pub fn mint_nft_with_payment(
-        ctx: Context<MintNFTWithPayment>,
-        name: String,
-        symbol: String,
-        uri: String,
-        payment_amount: u64,
-    ) -> Result<()> {
-        // Verificar se o sistema está pausado para emergências
-        require!(!ctx.accounts.config.emergency_paused, ErrorCode::SystemPaused);
-        
-        // Validar inputs não vazios
-        require!(!name.is_empty(), ErrorCode::InvalidInput);
-        require!(!symbol.is_empty(), ErrorCode::InvalidInput);
-        require!(!uri.is_empty(), ErrorCode::InvalidInput);
-        
-        msg!("Mintando NFT com pagamento: {}, {}, {}, pagamento: {} tokens", 
-            name, symbol, uri, payment_amount);
-
-        // Verificar se o token de pagamento configurado é válido
-        let payment_token_mint = ctx.accounts.config.payment_token_mint;
-        require_keys_eq!(
-            payment_token_mint,
-            ctx.accounts.payment_token_mint.key(),
-            ErrorCode::InvalidPaymentToken
-        );
-
-        // Verificar se o pagamento é suficiente
-        require!(
-            payment_amount > 0,
-            ErrorCode::InvalidPaymentAmount
-        );
-
-        // Verificar se o usuário tem saldo suficiente para o pagamento
-        require!(
-            ctx.accounts.payer_payment_token_account.amount >= payment_amount,
-            ErrorCode::InsufficientFunds
-        );
-        
-        msg!("Queimando tokens do pagador: {}, valor: {}", 
-            ctx.accounts.payer_payment_token_account.key(),
-            payment_amount);
-
-        // Queimar os tokens como pagamento
-        let burn_ctx = CpiContext::new(
-            ctx.accounts.token_program.to_account_info(),
-            Burn {
-                mint: ctx.accounts.payment_token_mint.to_account_info(),
-                from: ctx.accounts.payer_payment_token_account.to_account_info(),
-                authority: ctx.accounts.payer.to_account_info(),
-            },
-        );
-        
-        msg!("Iniciando operação de queima");
-        let burn_result = burn(burn_ctx, payment_amount);
-        match &burn_result {
-            Ok(_) => msg!("Queima bem-sucedida"),
-            Err(e) => msg!("Erro na queima: {:?}", e),
-        }
-        burn_result?;
-        
-        // Emitir evento com informações da queima
-        let clock = Clock::get()?;
-        emit!(TokenBurnEvent {
-            payer: ctx.accounts.payer.key(),
-            token_mint: ctx.accounts.payment_token_mint.key(),
-            amount: payment_amount,
-            nft_mint: ctx.accounts.nft_mint.key(),
-            timestamp: clock.unix_timestamp,
-        });
-
-        // Armazenar informações na conta de metadados do NFT
-        let metadata = &mut ctx.accounts.nft_metadata;
-        metadata.name = name;
-        metadata.symbol = symbol;
-        metadata.uri = uri;
-        metadata.authority = ctx.accounts.payer.key();
-        metadata.collection = Some(ctx.accounts.collection_metadata.key());
-
-        // Mintar 1 token para o NFT
-        let cpi_accounts = MintTo {
-            mint: ctx.accounts.nft_mint.to_account_info(),
-            to: ctx.accounts.nft_token_account.to_account_info(),
-            authority: ctx.accounts.payer.to_account_info(),
-        };
-        
-        let cpi_program = ctx.accounts.token_program.to_account_info();
-        let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
-        mint_to(cpi_ctx, 1)?;
-
-        Ok(())
-    }
-    
     // Ativar o sistema de staking e definir a taxa de recompensa
     pub fn configure_staking(
         ctx: Context<ConfigureStaking>,
@@ -325,74 +292,147 @@ pub mod adr_token_mint {
         Ok(())
     }
     
-    // Fazer stake de tokens
+    // Adicionar função para listar stakes de um usuário
+    pub fn get_user_stakes(ctx: Context<GetUserStakes>) -> Result<Vec<StakeInfo>> {
+        // Retornar informações dos stakes do usuário
+        let _user = ctx.accounts.user.key(); // Prefixado com _ para indicar que é intencionalmente não utilizado
+        let stakes = Vec::new(); // Removido o mut pois não é necessário
+        
+        // Aqui precisaríamos implementar uma forma de buscar todas as contas de stake
+        // do usuário. Uma opção é usar um mapa ou lista na conta de configuração.
+        
+        Ok(stakes)
+    }
+
+    // Função para obter o stake atual do usuário
+    pub fn get_current_stake(ctx: Context<GetCurrentStake>) -> Result<StakeInfo> {
+        let stake_account = &ctx.accounts.stake_account;
+        
+        Ok(StakeInfo {
+            amount: stake_account.amount,
+            start_time: stake_account.start_time,
+            unlock_time: stake_account.unlock_time,
+            period: stake_account.period,
+            claimed: stake_account.claimed,
+        })
+    }
+
+    // Modificar a função de stake para atualizar o stake existente
     pub fn stake_tokens(
         ctx: Context<StakeTokens>,
         amount: u64,
         period: StakingPeriod,
     ) -> Result<()> {
-        // Verificar se o sistema está pausado para emergências
         require!(!ctx.accounts.config.emergency_paused, ErrorCode::SystemPaused);
-        
-        // Verificar se o staking está habilitado
-        require!(
-            ctx.accounts.config.staking_enabled,
-            ErrorCode::StakingNotEnabled
-        );
-        
-        // Verificar se o valor é válido
-        require!(
-            amount > 0,
-            ErrorCode::InvalidStakeAmount
-        );
-        
-        // Verificar se o valor não excede o limite máximo
-        require!(
-            amount <= ctx.accounts.config.max_stake_amount,
-            ErrorCode::StakeAmountTooLarge
-        );
-        
-        // Calcular quando o staking termina
+        require!(ctx.accounts.config.staking_enabled, ErrorCode::StakingNotEnabled);
+        require!(amount > 0, ErrorCode::InvalidStakeAmount);
+        require!(amount <= ctx.accounts.config.max_stake_amount, ErrorCode::StakeAmountTooLarge);
+    
         let clock = Clock::get()?;
         let current_time = clock.unix_timestamp;
-        let unlock_time = current_time.checked_add(period.duration_in_seconds())
+        let unlock_time = current_time
+            .checked_add(period.duration_in_seconds())
             .ok_or(ErrorCode::MathOverflow)?;
-        
-        // Transferir tokens para a conta de stake
-        let transfer_ctx = CpiContext::new(
-            ctx.accounts.token_program.to_account_info(),
-            Transfer {
-                from: ctx.accounts.staker_token_account.to_account_info(),
-                to: ctx.accounts.stake_token_account.to_account_info(),
-                authority: ctx.accounts.staker.to_account_info(),
-            },
-        );
-        transfer(transfer_ctx, amount)?;
-        
-        // Atualizar os dados da conta de staking
+    
         let stake_account = &mut ctx.accounts.stake_account;
-        stake_account.owner = ctx.accounts.staker.key();
-        stake_account.amount = amount;
-        stake_account.start_time = current_time;
-        stake_account.unlock_time = unlock_time;
-        stake_account.period = period;
-        stake_account.claimed = false;
-        
-        // Emitir evento de staking
-        emit!(StakingEvent {
-            staker: ctx.accounts.staker.key(),
-            amount,
-            period,
-            start_time: current_time,
-            unlock_time,
-            stake_account: stake_account.key(),
-        });
-        
-        msg!("Tokens em stake: {} tokens por {} dias, desbloqueio em: {}", 
-            amount, period as u8, unlock_time);
-        
+    
+        // Seeds para o PDA
+        let signer_seeds: &[&[u8]] = &[b"stake_authority", &[ctx.bumps.stake_authority]];
+    
+        if stake_account.amount > 0 && !stake_account.claimed {
+            let stake_authority_seed: &[u8] = b"stake_authority";
+            let bump_seed: &[u8] = &[ctx.bumps.stake_authority];
+            let signer_seeds: [&[u8]; 2] = [stake_authority_seed, bump_seed];
+            let signer_seeds_slice: &[&[u8]] = &signer_seeds;
+            let signer_seeds_nested: &[&[&[u8]]] = &[signer_seeds_slice];
+            
+            let return_ctx = CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                Transfer {
+                    from: ctx.accounts.stake_token_account.to_account_info(),
+                    to: ctx.accounts.staker_token_account.to_account_info(),
+                    authority: ctx.accounts.stake_authority.to_account_info(),
+                },
+                signer_seeds_nested,
+            );
+            transfer(return_ctx, stake_account.amount)?;
+    
+            let new_amount = if stake_account.period == period {
+                stake_account.amount.checked_add(amount).ok_or(ErrorCode::MathOverflow)?
+            } else {
+                amount
+            };
+    
+            // Transfere novos tokens do staker
+            let stake_ctx = CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                Transfer {
+                    from: ctx.accounts.staker_token_account.to_account_info(),
+                    to: ctx.accounts.stake_token_account.to_account_info(),
+                    authority: ctx.accounts.staker.to_account_info(),
+                },
+            );
+            transfer(stake_ctx, new_amount)?;
+    
+            // Atualiza stake
+            let old_amount = stake_account.amount;
+            let old_period = stake_account.period;
+            stake_account.amount = new_amount;
+            stake_account.period = period;
+            stake_account.start_time = current_time;
+            stake_account.unlock_time = unlock_time;
+    
+            if old_period == period {
+                emit!(StakeAddedEvent {
+                    staker: ctx.accounts.staker.key(),
+                    additional_amount: amount,
+                    total_amount: new_amount,
+                    new_unlock_time: unlock_time,
+                    timestamp: current_time,
+                });
+            } else {
+                emit!(StakeUpdatedEvent {
+                    staker: ctx.accounts.staker.key(),
+                    old_amount,
+                    new_amount,
+                    old_period,
+                    new_period: period,
+                    start_time: current_time,
+                    unlock_time,
+                    timestamp: current_time,
+                });
+            }
+        } else {
+            // Primeiro stake ou após claim
+            let stake_ctx = CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                Transfer {
+                    from: ctx.accounts.staker_token_account.to_account_info(),
+                    to: ctx.accounts.stake_token_account.to_account_info(),
+                    authority: ctx.accounts.staker.to_account_info(),
+                },
+            );
+            transfer(stake_ctx, amount)?;
+    
+            stake_account.owner = ctx.accounts.staker.key();
+            stake_account.amount = amount;
+            stake_account.start_time = current_time;
+            stake_account.unlock_time = unlock_time;
+            stake_account.period = period;
+            stake_account.claimed = false;
+    
+            emit!(StakingEvent {
+                staker: ctx.accounts.staker.key(),
+                amount,
+                period,
+                start_time: current_time,
+                unlock_time,
+                stake_account: stake_account.key(),
+            });
+        }
+    
         Ok(())
-    }
+    }    
     
     // Resgatar tokens do staking e receber recompensas
     pub fn unstake_tokens(ctx: Context<UnstakeTokens>) -> Result<()> {
@@ -427,26 +467,27 @@ pub mod adr_token_mint {
             .checked_div(100).ok_or(ErrorCode::MathOverflow)?;
         
         // Transferir os tokens originais de volta para o staker
-        let transfer_ctx = CpiContext::new(
+        let stake_authority_seed = b"stake_authority";
+        let authority_seeds = &[
+            stake_authority_seed.as_ref(),
+            &[ctx.bumps.stake_authority],
+        ];
+        let signer_seeds = &[&authority_seeds[..]];
+
+        let transfer_ctx = CpiContext::new_with_signer(
             ctx.accounts.token_program.to_account_info(),
             Transfer {
                 from: ctx.accounts.stake_token_account.to_account_info(),
                 to: ctx.accounts.staker_token_account.to_account_info(),
                 authority: ctx.accounts.stake_authority.to_account_info(),
             },
+            signer_seeds,
         );
         transfer(transfer_ctx, staked_amount)?;
         
         // Se houver recompensas, mintar para o staker
         if reward_amount > 0 {
             // Criar seeds para o signer
-            let stake_authority_seed = b"stake_authority";
-            let authority_seeds = &[
-                stake_authority_seed.as_ref(),
-                &[ctx.bumps.stake_authority],
-            ];
-            let signer_seeds = &[&authority_seeds[..]];
-
             let mint_ctx = CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
                 MintTo {
@@ -604,6 +645,16 @@ pub struct InitializeCollection<'info> {
     )]
     pub config: Account<'info, ConfigAccount>,
 
+    // Adicionar conta do contador
+    #[account(
+        init,
+        payer = payer,
+        space = 8 + 8, // discriminator + u64
+        seeds = [b"nft_counter"],
+        bump,
+    )]
+    pub nft_counter: Account<'info, NftCounter>,
+
     pub token_program: Program<'info, Token>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
@@ -677,22 +728,40 @@ pub struct SetPaymentToken<'info> {
 pub struct MintNFTWithPayment<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
-
+    
+    #[account(
+        mut,
+        seeds = [b"nft_counter"],
+        bump,
+    )]
+    pub nft_counter: Account<'info, NftCounter>,
+    
     #[account(
         init,
         payer = payer,
         mint::decimals = 0,
         mint::authority = payer,
+        seeds = [
+            b"nft_mint",
+            collection_metadata.key().as_ref(),
+            nft_counter.count.to_le_bytes().as_ref(),
+        ],
+        bump,
     )]
     pub nft_mint: Account<'info, Mint>,
-
+    
     #[account(
         init,
         payer = payer,
-        space = 8 + 32 + 4 + 50 + 4 + 10 + 4 + 200 + 1 + 32, // discriminator + pubkey + name + symbol + uri + Option<Pubkey>
+        space = 8 + 32 + 4 + 50 + 4 + 10 + 4 + 200 + 1 + 32,
+        seeds = [
+            b"nft_metadata",
+            nft_mint.key().as_ref(),
+        ],
+        bump,
     )]
     pub nft_metadata: Account<'info, NFTMetadata>,
-
+    
     #[account(
         init,
         payer = payer,
@@ -700,29 +769,26 @@ pub struct MintNFTWithPayment<'info> {
         associated_token::authority = payer,
     )]
     pub nft_token_account: Account<'info, TokenAccount>,
-
-    // Referência à coleção
+    
     pub collection_metadata: Account<'info, NFTMetadata>,
-
-    // Conta do token de pagamento (mint)
+    
     #[account(mut)]
     pub payment_token_mint: Account<'info, Mint>,
-
-    // Conta do token do pagador
+    
     #[account(
         mut,
         associated_token::mint = payment_token_mint,
         associated_token::authority = payer,
     )]
     pub payer_payment_token_account: Account<'info, TokenAccount>,
-
-    // Configuração da coleção
+    
     #[account(
         mut,
-        constraint = config.payment_token_mint != Pubkey::default() @ ErrorCode::PaymentTokenNotConfigured,
+        constraint = config.payment_token_mint != Pubkey::default() 
+            @ ErrorCode::PaymentTokenNotConfigured,
     )]
     pub config: Account<'info, ConfigAccount>,
-
+    
     pub token_program: Program<'info, Token>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
@@ -762,6 +828,16 @@ pub struct StakeTokens<'info> {
     #[account(
         init_if_needed,
         payer = staker,
+        space = 8 + 32 + 8 + 8 + 8 + 4 + 1,
+        seeds = [b"stake_account", staker.key().as_ref(), token_mint.key().as_ref()],
+        bump
+    )]
+    pub stake_account: Account<'info, StakeAccount>,
+
+    // Conta que vai armazenar os tokens em stake
+    #[account(
+        init_if_needed,
+        payer = staker,
         associated_token::mint = token_mint,
         associated_token::authority = stake_authority,
     )]
@@ -774,14 +850,6 @@ pub struct StakeTokens<'info> {
     )]
     /// CHECK: Este é um PDA usado como autoridade
     pub stake_authority: UncheckedAccount<'info>,
-    
-    // Conta para rastrear informações do staking
-    #[account(
-        init,
-        payer = staker,
-        space = 8 + 32 + 8 + 8 + 8 + 4 + 1, // discriminator + owner + amount + start_time + unlock_time + period + claimed
-    )]
-    pub stake_account: Account<'info, StakeAccount>,
     
     // Configuração do token
     pub config: Account<'info, ConfigAccount>,
@@ -851,23 +919,13 @@ pub struct NFTMetadata {
 }
 
 #[account]
-pub struct ConfigAccount {
-    pub payment_token_mint: Pubkey,
-    pub admin: Pubkey,
-    pub staking_enabled: bool,
-    pub staking_reward_rate: u64, // Base em pontos percentuais (10000 = 100%)
-    pub max_stake_amount: u64,    // Valor máximo que pode ser colocado em stake
-    pub emergency_paused: bool,   // Flag para pausar o contrato em caso de emergência
-}
-
-#[account]
 pub struct StakeAccount {
-    pub owner: Pubkey,           // Dono dos tokens em stake
-    pub amount: u64,             // Quantidade de tokens em stake
-    pub start_time: i64,         // Timestamp de início do staking
-    pub unlock_time: i64,        // Timestamp de quando os tokens podem ser retirados
-    pub period: StakingPeriod,   // Período de staking selecionado
-    pub claimed: bool,           // Se as recompensas já foram reivindicadas
+    pub owner: Pubkey,           
+    pub amount: u64,             
+    pub start_time: i64,        
+    pub unlock_time: i64,      
+    pub period: StakingPeriod,   
+    pub claimed: bool,         
 }
 
 #[derive(Accounts)]
@@ -904,6 +962,48 @@ pub struct UpdateStakingConfig<'info> {
         constraint = config.admin == admin.key() @ ErrorCode::Unauthorized,
     )]
     pub config: Account<'info, ConfigAccount>,
+}
+
+#[derive(Accounts)]
+pub struct GetUserStakes<'info> {
+    pub user: Signer<'info>,
+    pub config: Account<'info, ConfigAccount>,
+}
+
+#[derive(Accounts)]
+pub struct GetCurrentStake<'info> {
+    pub user: Signer<'info>,
+    pub stake_account: Account<'info, StakeAccount>,
+}
+
+#[event]
+pub struct StakeUpdatedEvent {
+    pub staker: Pubkey,
+    pub old_amount: u64,
+    pub new_amount: u64,
+    pub old_period: StakingPeriod,
+    pub new_period: StakingPeriod,
+    pub start_time: i64,
+    pub unlock_time: i64,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct StakeAddedEvent {
+    pub staker: Pubkey,
+    pub additional_amount: u64,
+    pub total_amount: u64,
+    pub new_unlock_time: i64,
+    pub timestamp: i64,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize)]
+pub struct StakeInfo {
+    pub amount: u64,
+    pub start_time: i64,
+    pub unlock_time: i64,
+    pub period: StakingPeriod,
+    pub claimed: bool,
 }
 
 #[error_code]
@@ -949,4 +1049,39 @@ pub enum ErrorCode {
     
     #[msg("Valor de stake excede o limite máximo permitido")]
     StakeAmountTooLarge,
+    
+    #[msg("Este stake já foi reivindicado")]
+    StakeAlreadyClaimed,
 }
+
+// Novas estruturas de contexto para funções view
+
+/*
+#[derive(Accounts)]
+pub struct GetStakeSummaryView<'info> {
+    pub staker: Signer<'info>,
+    pub token_mint: Account<'info, Mint>,
+    pub stake_account: Account<'info, StakeAccount>,
+    pub config: Account<'info, ConfigAccount>,
+}
+
+#[derive(Accounts)]
+pub struct GetConfigSummaryView<'info> {
+    pub config: Account<'info, ConfigAccount>,
+}
+
+#[derive(Accounts)]
+pub struct GetCollectionInfoView<'info> {
+    pub collection_metadata: Account<'info, NFTMetadata>,
+    #[account(
+        seeds = [b"nft_counter"],
+        bump,
+    )]
+    pub nft_counter: Account<'info, NftCounter>,
+}
+
+#[derive(Accounts)]
+pub struct CalculateRewardView<'info> {
+    pub config: Account<'info, ConfigAccount>,
+}
+*/
