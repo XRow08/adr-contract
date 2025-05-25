@@ -129,6 +129,16 @@
       "code": 6014,
       "msg": "Este stake já foi reivindicado",
       "name": "StakeAlreadyClaimed"
+    },
+    {
+      "code": 6015,
+      "msg": "Reserva de recompensas insuficiente",
+      "name": "InsufficientRewardReserve"
+    },
+    {
+      "code": 6016,
+      "msg": "Conta de reserva de recompensas inválida",
+      "name": "InvalidRewardReserve"
     }
   ],
   "events": [
@@ -295,6 +305,249 @@
         177
       ],
       "name": "configure_staking"
+    },
+    {
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "writable": true
+        },
+        {
+          "name": "admin_token_account",
+          "pda": {
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            },
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "admin"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "token_mint"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "reward_reserve_account",
+          "pda": {
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            },
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "stake_authority"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "token_mint"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "token_mint"
+        },
+        {
+          "name": "stake_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  107,
+                  101,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "config"
+        },
+        {
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          "name": "token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ],
+      "discriminator": [
+        178,
+        233,
+        187,
+        124,
+        117,
+        171,
+        0,
+        41
+      ],
+      "name": "deposit_reward_reserve"
     },
     {
       "accounts": [
@@ -532,6 +785,167 @@
         93
       ],
       "name": "initialize_collection"
+    },
+    {
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "writable": true
+        },
+        {
+          "name": "reward_reserve_account",
+          "pda": {
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            },
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "stake_authority"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "token_mint"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "token_mint"
+        },
+        {
+          "name": "stake_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  107,
+                  101,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "config",
+          "writable": true
+        },
+        {
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          "name": "token_program"
+        },
+        {
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+          "name": "associated_token_program"
+        },
+        {
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
+        },
+        {
+          "address": "SysvarRent111111111111111111111111111111111",
+          "name": "rent"
+        }
+      ],
+      "args": [],
+      "discriminator": [
+        104,
+        13,
+        114,
+        108,
+        128,
+        174,
+        131,
+        57
+      ],
+      "name": "initialize_reward_reserve"
     },
     {
       "accounts": [
@@ -928,6 +1342,36 @@
     {
       "accounts": [
         {
+          "name": "admin",
+          "signer": true,
+          "writable": true
+        },
+        {
+          "name": "config",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "reward_reserve",
+          "type": "pubkey"
+        }
+      ],
+      "discriminator": [
+        139,
+        50,
+        20,
+        12,
+        50,
+        224,
+        16,
+        67
+      ],
+      "name": "set_reward_reserve"
+    },
+    {
+      "accounts": [
+        {
           "name": "staker",
           "signer": true,
           "writable": true
@@ -1233,10 +1677,6 @@
           "name": "token_mint"
         },
         {
-          "name": "reward_token_mint",
-          "writable": true
-        },
-        {
           "name": "staker_token_account",
           "pda": {
             "program": {
@@ -1328,6 +1768,96 @@
         },
         {
           "name": "stake_token_account",
+          "pda": {
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            },
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "stake_authority"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "token_mint"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "reward_reserve_account",
           "pda": {
             "program": {
               "kind": "const",
@@ -1567,6 +2097,10 @@
           {
             "name": "emergency_paused",
             "type": "bool"
+          },
+          {
+            "name": "reward_reserve",
+            "type": "pubkey"
           }
         ],
         "kind": "struct"

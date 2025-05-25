@@ -4,7 +4,7 @@ use anchor_spl::{
     token::{Mint, Token, TokenAccount, mint_to, MintTo, approve, Approve, burn, Burn, transfer, Transfer},
 };
 
-declare_id!("9cDdb8o8hnfZjvKffc9pzGhvcEG7dVjg9yXHMDuL975v");
+declare_id!("65zQjC4UYf4zJdDyfScpZjgaBbiMRpmFhNJkFSp39GZF");
 
 // Definir evento para registrar informações de queima de tokens
 #[event]
@@ -97,6 +97,7 @@ pub struct ConfigAccount {
     pub staking_reward_rate: u64, // Base em pontos percentuais (10000 = 100%)
     pub max_stake_amount: u64,    // Valor máximo que pode ser colocado em stake
     pub emergency_paused: bool,   // Flag para pausar o contrato em caso de emergência
+    pub reward_reserve: Pubkey,   // Conta que armazena tokens de recompensa
 }
 
 #[program]
@@ -132,6 +133,7 @@ pub mod adr_token_mint {
         config.staking_reward_rate = 0; // taxa base de recompensa (será configurada depois)
         config.max_stake_amount = 1_000_000 * 10u64.pow(9); // Limite máximo de stake: 1 milhão de tokens
         config.emergency_paused = false; // Inicialmente não pausado
+        config.reward_reserve = Pubkey::default(); // Será configurada depois
         
         // Inicializar o contador
         let counter = &mut ctx.accounts.nft_counter;
@@ -251,6 +253,71 @@ pub mod adr_token_mint {
         Ok(())
     }
 
+    // Configurar a conta de reserva de recompensas
+    pub fn set_reward_reserve(
+        ctx: Context<SetRewardReserve>,
+        reward_reserve: Pubkey,
+    ) -> Result<()> {
+        // Verificar se o chamador é o administrador
+        require_keys_eq!(
+            ctx.accounts.admin.key(),
+            ctx.accounts.config.admin,
+            ErrorCode::Unauthorized
+        );
+        
+        ctx.accounts.config.reward_reserve = reward_reserve;
+        msg!("Reserva de recompensas configurada: {}", reward_reserve);
+        
+        Ok(())
+    }
+
+    // Inicializar a reserva de recompensas
+    pub fn initialize_reward_reserve(
+        ctx: Context<InitializeRewardReserve>,
+    ) -> Result<()> {
+        // Verificar se o chamador é o administrador
+        require_keys_eq!(
+            ctx.accounts.admin.key(),
+            ctx.accounts.config.admin,
+            ErrorCode::Unauthorized
+        );
+        
+        // Atualizar a configuração com o endereço da reserva
+        ctx.accounts.config.reward_reserve = ctx.accounts.reward_reserve_account.key();
+        
+        msg!("Reserva de recompensas inicializada: {}", ctx.accounts.reward_reserve_account.key());
+        
+        Ok(())
+    }
+
+    // Depositar tokens na reserva de recompensas
+    pub fn deposit_reward_reserve(
+        ctx: Context<DepositRewardReserve>,
+        amount: u64,
+    ) -> Result<()> {
+        // Verificar se o chamador é o administrador
+        require_keys_eq!(
+            ctx.accounts.admin.key(),
+            ctx.accounts.config.admin,
+            ErrorCode::Unauthorized
+        );
+        
+        // Transferir tokens do admin para a reserva
+        let transfer_ctx = CpiContext::new(
+            ctx.accounts.token_program.to_account_info(),
+            Transfer {
+                from: ctx.accounts.admin_token_account.to_account_info(),
+                to: ctx.accounts.reward_reserve_account.to_account_info(),
+                authority: ctx.accounts.admin.to_account_info(),
+            },
+        );
+        transfer(transfer_ctx, amount)?;
+        
+        msg!("Depositados {} tokens na reserva de recompensas", amount);
+        
+        Ok(())
+    }
+
     // Ativar o sistema de staking e definir a taxa de recompensa
     pub fn configure_staking(
         ctx: Context<ConfigureStaking>,
@@ -292,32 +359,9 @@ pub mod adr_token_mint {
         Ok(())
     }
     
-    // Adicionar função para listar stakes de um usuário
-    pub fn get_user_stakes(ctx: Context<GetUserStakes>) -> Result<Vec<StakeInfo>> {
-        // Retornar informações dos stakes do usuário
-        let _user = ctx.accounts.user.key(); // Prefixado com _ para indicar que é intencionalmente não utilizado
-        let stakes = Vec::new(); // Removido o mut pois não é necessário
-        
-        // Aqui precisaríamos implementar uma forma de buscar todas as contas de stake
-        // do usuário. Uma opção é usar um mapa ou lista na conta de configuração.
-        
-        Ok(stakes)
-    }
 
-    // Função para obter o stake atual do usuário
-    pub fn get_current_stake(ctx: Context<GetCurrentStake>) -> Result<StakeInfo> {
-        let stake_account = &ctx.accounts.stake_account;
-        
-        Ok(StakeInfo {
-            amount: stake_account.amount,
-            start_time: stake_account.start_time,
-            unlock_time: stake_account.unlock_time,
-            period: stake_account.period,
-            claimed: stake_account.claimed,
-        })
-    }
 
-    // Modificar a função de stake para atualizar o stake existente
+    // Função de stake simplificada
     pub fn stake_tokens(
         ctx: Context<StakeTokens>,
         amount: u64,
@@ -357,13 +401,10 @@ pub mod adr_token_mint {
             );
             transfer(return_ctx, stake_account.amount)?;
     
-            let new_amount = if stake_account.period == period {
-                stake_account.amount.checked_add(amount).ok_or(ErrorCode::MathOverflow)?
-            } else {
-                amount
-            };
+            // CORREÇÃO: Sempre somar o valor anterior com o novo, independente do período
+            let new_amount = stake_account.amount.checked_add(amount).ok_or(ErrorCode::MathOverflow)?;
     
-            // Transfere novos tokens do staker
+            // Transfere todos os tokens (antigos + novos) do staker para a conta de stake
             let stake_ctx = CpiContext::new(
                 ctx.accounts.token_program.to_account_info(),
                 Transfer {
@@ -382,26 +423,7 @@ pub mod adr_token_mint {
             stake_account.start_time = current_time;
             stake_account.unlock_time = unlock_time;
     
-            if old_period == period {
-                emit!(StakeAddedEvent {
-                    staker: ctx.accounts.staker.key(),
-                    additional_amount: amount,
-                    total_amount: new_amount,
-                    new_unlock_time: unlock_time,
-                    timestamp: current_time,
-                });
-            } else {
-                emit!(StakeUpdatedEvent {
-                    staker: ctx.accounts.staker.key(),
-                    old_amount,
-                    new_amount,
-                    old_period,
-                    new_period: period,
-                    start_time: current_time,
-                    unlock_time,
-                    timestamp: current_time,
-                });
-            }
+
         } else {
             // Primeiro stake ou após claim
             let stake_ctx = CpiContext::new(
@@ -485,19 +507,25 @@ pub mod adr_token_mint {
         );
         transfer(transfer_ctx, staked_amount)?;
         
-        // Se houver recompensas, mintar para o staker
+        // Se houver recompensas, transferir da reserva para o staker
         if reward_amount > 0 {
-            // Criar seeds para o signer
-            let mint_ctx = CpiContext::new_with_signer(
+            // Verificar se há saldo suficiente na reserva
+            require!(
+                ctx.accounts.reward_reserve_account.amount >= reward_amount,
+                ErrorCode::InsufficientRewardReserve
+            );
+            
+            // Transferir recompensas da reserva para o staker
+            let reward_transfer_ctx = CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
-                MintTo {
-                    mint: ctx.accounts.reward_token_mint.to_account_info(),
+                Transfer {
+                    from: ctx.accounts.reward_reserve_account.to_account_info(),
                     to: ctx.accounts.staker_token_account.to_account_info(),
                     authority: ctx.accounts.stake_authority.to_account_info(),
                 },
                 signer_seeds,
             );
-            mint_to(mint_ctx, reward_amount)?;
+            transfer(reward_transfer_ctx, reward_amount)?;
         }
         
         // Marcar como reivindicado
@@ -519,13 +547,11 @@ pub mod adr_token_mint {
         Ok(())
     }
 
-    // Adicionar funcionalidade de pausa de emergência
     pub fn set_emergency_pause(
         ctx: Context<EmergencyPause>,
         paused: bool,
         reason: String,
     ) -> Result<()> {
-        // Apenas o admin pode pausar/despausar o contrato
         require_keys_eq!(
             ctx.accounts.admin.key(),
             ctx.accounts.config.admin,
@@ -547,66 +573,7 @@ pub mod adr_token_mint {
         Ok(())
     }
     
-    // Adicionar funcionalidade para atualizar o admin
-    pub fn update_admin(
-        ctx: Context<UpdateAdmin>,
-        new_admin: Pubkey
-    ) -> Result<()> {
-        // Verificar que o endereço do novo admin não é vazio
-        require!(new_admin != Pubkey::default(), ErrorCode::InvalidInput);
-        
-        // Apenas o admin atual pode transferir a propriedade
-        require_keys_eq!(
-            ctx.accounts.current_admin.key(),
-            ctx.accounts.config.admin,
-            ErrorCode::Unauthorized
-        );
-        
-        let old_admin = ctx.accounts.config.admin;
-        ctx.accounts.config.admin = new_admin;
-        
-        // Emitir evento de atualização de configuração
-        emit!(ConfigUpdateEvent {
-            admin: ctx.accounts.current_admin.key(),
-            field: "admin".to_string(),
-            old_value: old_admin.to_string(),
-            new_value: new_admin.to_string(),
-            timestamp: Clock::get()?.unix_timestamp,
-        });
-        
-        msg!("Admin atualizado para: {}", new_admin);
-        
-        Ok(())
-    }
-    
-    // Adicionar funcionalidade para atualizar o limite máximo de stake
-    pub fn update_max_stake_amount(
-        ctx: Context<UpdateStakingConfig>,
-        max_amount: u64
-    ) -> Result<()> {
-        // Apenas o admin pode atualizar os limites
-        require_keys_eq!(
-            ctx.accounts.admin.key(),
-            ctx.accounts.config.admin,
-            ErrorCode::Unauthorized
-        );
-        
-        let old_amount = ctx.accounts.config.max_stake_amount;
-        ctx.accounts.config.max_stake_amount = max_amount;
-        
-        // Emitir evento de atualização de configuração
-        emit!(ConfigUpdateEvent {
-            admin: ctx.accounts.admin.key(),
-            field: "max_stake_amount".to_string(),
-            old_value: old_amount.to_string(),
-            new_value: max_amount.to_string(),
-            timestamp: Clock::get()?.unix_timestamp,
-        });
-        
-        msg!("Valor máximo de stake atualizado para: {}", max_amount);
-        
-        Ok(())
-    }
+
 }
 
 #[derive(Accounts)]
@@ -637,13 +604,13 @@ pub struct InitializeCollection<'info> {
     )]
     pub collection_token_account: Account<'info, TokenAccount>,
 
-    // Conta para armazenar a configuração
-    #[account(
-        init,
-        payer = payer,
-        space = 8 + 32 + 32 + 1 + 8 + 8 + 1, // discriminator + pubkey (payment_token_mint) + pubkey (admin) + staking_enabled + staking_reward_rate + max_stake_amount + emergency_paused
-    )]
-    pub config: Account<'info, ConfigAccount>,
+            // Conta para armazenar a configuração
+        #[account(
+            init,
+            payer = payer,
+            space = 8 + 32 + 32 + 1 + 8 + 8 + 1 + 32, // discriminator + payment_token_mint + admin + staking_enabled + staking_reward_rate + max_stake_amount + emergency_paused + reward_reserve
+        )]
+        pub config: Account<'info, ConfigAccount>,
 
     // Adicionar conta do contador
     #[account(
@@ -661,42 +628,7 @@ pub struct InitializeCollection<'info> {
     pub rent: Sysvar<'info, Rent>,
 }
 
-#[derive(Accounts)]
-pub struct MintNFT<'info> {
-    #[account(mut)]
-    pub payer: Signer<'info>,
 
-    #[account(
-        init,
-        payer = payer,
-        mint::decimals = 0,
-        mint::authority = payer,
-    )]
-    pub nft_mint: Account<'info, Mint>,
-
-    #[account(
-        init,
-        payer = payer,
-        space = 8 + 32 + 4 + 50 + 4 + 10 + 4 + 200 + 1 + 32, // discriminator + pubkey + name + symbol + uri + Option<Pubkey>
-    )]
-    pub nft_metadata: Account<'info, NFTMetadata>,
-
-    #[account(
-        init,
-        payer = payer,
-        associated_token::mint = nft_mint,
-        associated_token::authority = payer,
-    )]
-    pub nft_token_account: Account<'info, TokenAccount>,
-
-    // Referência à coleção
-    pub collection_metadata: Account<'info, NFTMetadata>,
-
-    pub token_program: Program<'info, Token>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub system_program: Program<'info, System>,
-    pub rent: Sysvar<'info, Rent>,
-}
 
 #[derive(Accounts)]
 pub struct ApproveDelegate<'info> {
@@ -722,6 +654,78 @@ pub struct SetPaymentToken<'info> {
 
     #[account(mut)]
     pub config: Account<'info, ConfigAccount>,
+}
+
+#[derive(Accounts)]
+pub struct SetRewardReserve<'info> {
+    #[account(mut)]
+    pub admin: Signer<'info>,
+
+    #[account(mut)]
+    pub config: Account<'info, ConfigAccount>,
+}
+
+#[derive(Accounts)]
+pub struct InitializeRewardReserve<'info> {
+    #[account(mut)]
+    pub admin: Signer<'info>,
+
+    #[account(
+        init,
+        payer = admin,
+        associated_token::mint = token_mint,
+        associated_token::authority = stake_authority,
+    )]
+    pub reward_reserve_account: Account<'info, TokenAccount>,
+
+    pub token_mint: Account<'info, Mint>,
+
+    #[account(
+        seeds = [b"stake_authority"],
+        bump,
+    )]
+    /// CHECK: Este é um PDA usado como autoridade
+    pub stake_authority: UncheckedAccount<'info>,
+
+    #[account(mut)]
+    pub config: Account<'info, ConfigAccount>,
+    
+    pub token_program: Program<'info, Token>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub system_program: Program<'info, System>,
+    pub rent: Sysvar<'info, Rent>,
+}
+
+#[derive(Accounts)]
+pub struct DepositRewardReserve<'info> {
+    #[account(mut)]
+    pub admin: Signer<'info>,
+
+    #[account(
+        mut,
+        associated_token::mint = token_mint,
+        associated_token::authority = admin,
+    )]
+    pub admin_token_account: Account<'info, TokenAccount>,
+
+    #[account(
+        mut,
+        associated_token::mint = token_mint,
+        associated_token::authority = stake_authority,
+    )]
+    pub reward_reserve_account: Account<'info, TokenAccount>,
+
+    pub token_mint: Account<'info, Mint>,
+
+    #[account(
+        seeds = [b"stake_authority"],
+        bump,
+    )]
+    /// CHECK: Este é um PDA usado como autoridade
+    pub stake_authority: UncheckedAccount<'info>,
+
+    pub config: Account<'info, ConfigAccount>,
+    pub token_program: Program<'info, Token>,
 }
 
 #[derive(Accounts)]
@@ -868,10 +872,6 @@ pub struct UnstakeTokens<'info> {
     // Token a ser usado para staking (o mesmo token de pagamento)
     pub token_mint: Account<'info, Mint>,
     
-    // Token mint para recompensas (pode ser o mesmo ou outro token)
-    #[account(mut)]
-    pub reward_token_mint: Account<'info, Mint>,
-    
     #[account(
         mut,
         associated_token::mint = token_mint,
@@ -886,6 +886,15 @@ pub struct UnstakeTokens<'info> {
         associated_token::authority = stake_authority,
     )]
     pub stake_token_account: Account<'info, TokenAccount>,
+    
+    // Conta de reserva de recompensas
+    #[account(
+        mut,
+        associated_token::mint = token_mint,
+        associated_token::authority = stake_authority,
+        constraint = reward_reserve_account.key() == config.reward_reserve @ ErrorCode::InvalidRewardReserve,
+    )]
+    pub reward_reserve_account: Account<'info, TokenAccount>,
     
     // Autoridade PDA para controlar os tokens em stake
     #[account(
@@ -940,72 +949,6 @@ pub struct EmergencyPause<'info> {
     pub config: Account<'info, ConfigAccount>,
 }
 
-#[derive(Accounts)]
-pub struct UpdateAdmin<'info> {
-    #[account(mut)]
-    pub current_admin: Signer<'info>,
-
-    #[account(
-        mut,
-        constraint = config.admin == current_admin.key() @ ErrorCode::Unauthorized,
-    )]
-    pub config: Account<'info, ConfigAccount>,
-}
-
-#[derive(Accounts)]
-pub struct UpdateStakingConfig<'info> {
-    #[account(mut)]
-    pub admin: Signer<'info>,
-
-    #[account(
-        mut,
-        constraint = config.admin == admin.key() @ ErrorCode::Unauthorized,
-    )]
-    pub config: Account<'info, ConfigAccount>,
-}
-
-#[derive(Accounts)]
-pub struct GetUserStakes<'info> {
-    pub user: Signer<'info>,
-    pub config: Account<'info, ConfigAccount>,
-}
-
-#[derive(Accounts)]
-pub struct GetCurrentStake<'info> {
-    pub user: Signer<'info>,
-    pub stake_account: Account<'info, StakeAccount>,
-}
-
-#[event]
-pub struct StakeUpdatedEvent {
-    pub staker: Pubkey,
-    pub old_amount: u64,
-    pub new_amount: u64,
-    pub old_period: StakingPeriod,
-    pub new_period: StakingPeriod,
-    pub start_time: i64,
-    pub unlock_time: i64,
-    pub timestamp: i64,
-}
-
-#[event]
-pub struct StakeAddedEvent {
-    pub staker: Pubkey,
-    pub additional_amount: u64,
-    pub total_amount: u64,
-    pub new_unlock_time: i64,
-    pub timestamp: i64,
-}
-
-#[derive(AnchorSerialize, AnchorDeserialize)]
-pub struct StakeInfo {
-    pub amount: u64,
-    pub start_time: i64,
-    pub unlock_time: i64,
-    pub period: StakingPeriod,
-    pub claimed: bool,
-}
-
 #[error_code]
 pub enum ErrorCode {
     #[msg("Você não está autorizado a realizar esta ação")]
@@ -1052,36 +995,10 @@ pub enum ErrorCode {
     
     #[msg("Este stake já foi reivindicado")]
     StakeAlreadyClaimed,
+    
+    #[msg("Reserva de recompensas insuficiente")]
+    InsufficientRewardReserve,
+    
+    #[msg("Conta de reserva de recompensas inválida")]
+    InvalidRewardReserve,
 }
-
-// Novas estruturas de contexto para funções view
-
-/*
-#[derive(Accounts)]
-pub struct GetStakeSummaryView<'info> {
-    pub staker: Signer<'info>,
-    pub token_mint: Account<'info, Mint>,
-    pub stake_account: Account<'info, StakeAccount>,
-    pub config: Account<'info, ConfigAccount>,
-}
-
-#[derive(Accounts)]
-pub struct GetConfigSummaryView<'info> {
-    pub config: Account<'info, ConfigAccount>,
-}
-
-#[derive(Accounts)]
-pub struct GetCollectionInfoView<'info> {
-    pub collection_metadata: Account<'info, NFTMetadata>,
-    #[account(
-        seeds = [b"nft_counter"],
-        bump,
-    )]
-    pub nft_counter: Account<'info, NftCounter>,
-}
-
-#[derive(Accounts)]
-pub struct CalculateRewardView<'info> {
-    pub config: Account<'info, ConfigAccount>,
-}
-*/

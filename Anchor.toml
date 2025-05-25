@@ -1,19 +1,43 @@
-[toolchain]
-package_manager = "yarn"
-
 [features]
-resolution = true
+seeds = false
 skip-lint = false
+# Definir a versão compatível com a instalação global
+anchor_version = "0.31.1"
 
 [programs.devnet]
-adr_token_mint = "9cDdb8o8hnfZjvKffc9pzGhvcEG7dVjg9yXHMDuL975v"
+adr_token_mint = "65zQjC4UYf4zJdDyfScpZjgaBbiMRpmFhNJkFSp39GZF"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
 cluster = "devnet"
-wallet = "~/.config/solana/id.json"
+wallet = "./wallet-dev.json"
 
 [scripts]
 test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
+inicializar = "node scripts/deploy-and-initialize.js"
+verify = "node scripts/verify-deployment.js"
+create-token = "node scripts/create-token.js"
+config-token = "node scripts/configure-payment-token.js"
+init-collection = "node scripts/initialize-collection.js"
+mint-nft = "node scripts/mint-nft.js"
+init-simple = "node scripts/initialize-program.js"
+check = "node scripts/simple-verify.js"
+update = "node scripts/update-anchor.js"
+guide = "node scripts/deployment-guide.js"
+direct-init = "node scripts/direct-init-collection.js"
+direct-config = "node scripts/direct-config-token.js"
+export-keypairs = "node scripts/export-keypairs.js"
+direct-guide = "node scripts/direct-guide.js"
+migrate = "node scripts/create-new-project.js"
+simple-config = "node scripts/simple-config-token.js"
+summary = "node scripts/summary.js"
+deploy = "node scripts/deploy-program.js"
+config-spl-token = "node scripts/set-payment-token.js"
+config-staking = "node scripts/configure-staking.js"
+init-reserve = "node scripts/initialize-reward-reserve.js"
+deposit-reserve = "node scripts/deposit-rewards.js"
+airdrop = "node scripts/airdrop-tokens.js"
+status = "node scripts/check-deployment-status.js"
+setup = "node scripts/setup-all-components.js"

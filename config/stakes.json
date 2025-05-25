@@ -1,0 +1,70 @@
+[
+  {
+    "staker": "FonqvQ2kFpBFLyNddupwJwuDUcfhHctrbJif43mPqEau",
+    "stakeAccount": "stake-1748138017243-799",
+    "amount": 10000000000,
+    "period": 5,
+    "multiplier": 120,
+    "stakeTime": "2025-05-25T01:53:37.201Z",
+    "unlockTime": "2025-05-25T01:54:37.201Z",
+    "transaction": "simulação",
+    "unstaked": true,
+    "unstakeTime": "2025-05-25T01:55:34.747Z",
+    "unstakeTransaction": "simulação",
+    "rewardAmount": 2000000000,
+    "totalAmount": 12000000000
+  },
+  {
+    "staker": "FonqvQ2kFpBFLyNddupwJwuDUcfhHctrbJif43mPqEau",
+    "stakeAccount": "stake-1748154552040-377",
+    "amount": 10000000000,
+    "period": 5,
+    "multiplier": 120,
+    "stakeTime": "2025-05-25T06:29:11.967Z",
+    "unlockTime": "2025-05-25T06:34:11.967Z",
+    "transaction": "simulação"
+  },
+  {
+    "staker": "FonqvQ2kFpBFLyNddupwJwuDUcfhHctrbJif43mPqEau",
+    "stakeAccount": "stake-1748155825691-587",
+    "amount": 10000000000,
+    "period": 5,
+    "multiplier": 120,
+    "stakeTime": "2025-05-25T06:50:25.640Z",
+    "unlockTime": "2025-05-25T06:55:25.640Z",
+    "transaction": "simulação"
+  },
+  {
+    "staker": "FonqvQ2kFpBFLyNddupwJwuDUcfhHctrbJif43mPqEau",
+    "stakeAccount": "FwWXTstUjX3WhKxR3nWPwKs69nNiRfQnuPEmjxpgPRBX",
+    "stakeTokenAccount": "7WXrCVxa2L8z5g2zKxFSTTN8w9KXmfVtFJbHQA9XQS4n",
+    "amount": 1000000000,
+    "period": 2,
+    "stakeTime": "2025-05-25T07:05:53.547Z",
+    "unlockTime": "2025-05-25T07:07:53.547Z",
+    "transaction": "2hHkNtTUqMZaYg4xE1kknWsTBq6fYex9GTnA6wiHoWQw86fkbQdJidZ9BWAffGAYKUgYaHbtFaNh61rSxUEryviZ"
+  },
+  {
+    "staker": "FonqvQ2kFpBFLyNddupwJwuDUcfhHctrbJif43mPqEau",
+    "stakeAccount": "HCnAWrBEibcVFVqk6TttYfCmFnt1TaGZWoaCWj1pc64v",
+    "stakeTokenAccount": "G3yYfWUbCLuoM5QCz8fCkTVyqfN5M3DZrupYm6wPJj6c",
+    "amount": 1000000000,
+    "period": 1,
+    "stakeTime": "2025-05-25T07:21:29.485Z",
+    "unlockTime": "2025-05-25T07:22:29.485Z",
+    "transaction": "R8NMqyFfjCSH6P8MXY7WaJwJuazvXSHmGNtKNVpu9wJPe6MCSG2TXhgLcv92WrpdjbtMqEqSkfKsP83ok2KgYTu",
+    "unstaked": true,
+    "unstakeTime": "2025-05-25T07:41:14.473Z",
+    "unstakeTx": "57njunskZmZpnggw57SB2t4MCVS1XqQnEoMJzQVAM31EjZKBTxcTygJNSHqocgwbgEk7gHaG2VyV2acFv7gMKa59"
+  },
+  {
+    "staker": "FonqvQ2kFpBFLyNddupwJwuDUcfhHctrbJif43mPqEau",
+    "stakeAccount": "HCnAWrBEibcVFVqk6TttYfCmFnt1TaGZWoaCWj1pc64v",
+    "stakeTokenAccount": "G3yYfWUbCLuoM5QCz8fCkTVyqfN5M3DZrupYm6wPJj6c",
+    "amount": 1000000000,
+    "period": 1,
+    "stakeTime": "2025-05-25T09:26:44.988Z",
+    "unlockTime": "2025-05-25T09:27:44.988Z",
+    "transaction": "46zKjY8Gee8rvAgAXHkwhqYEeXMmRRXpS8nKRN9VTud4haPxGxhLLe2e9FhSuCBaE1Z35mRXUag9ntGVexBH4d9s"
+  }
+]

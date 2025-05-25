@@ -1,80 +1,19 @@
-# ADR Token Contract
+# ADR Token Mint - Sistema de NFTs e Staking
 
-Este é um contrato inteligente Solana para um sistema de NFTs com pagamento em tokens e staking.
+Este projeto implementa um programa Solana que permite:
 
-## Funcionalidades
+1. Criar e gerenciar uma coleção de NFTs
+2. Mint de NFTs com pagamento em tokens
+3. Sistema de staking com recompensas escalonadas por tempo
 
-- **Coleção de NFTs**: Inicializa e gerencia uma coleção de NFTs.
-- **Mintagem de NFTs**: Permite mintar NFTs individualmente.
-- **Pagamento com Tokens**: Permite mintar NFTs com pagamento em tokens.
-- **Queima de Tokens**: Queima tokens como parte do processo de pagamento.
-- **Sistema de Staking**: Permite fazer stake de tokens por diferentes períodos.
-- **Recompensas de Staking**: Diferentes períodos oferecem diferentes multiplicadores de recompensa.
-- **Registro de Eventos**: Emite eventos personalizados para transações importantes.
+## Pré-requisitos
 
-## Períodos de Staking e Recompensas
+- Node.js e npm instalados
+- Solana CLI instalado
+- Anchor Framework (versão 0.31.1)
+- Uma wallet Solana com SOL na devnet para testes
 
-| Período | Duração | Multiplicador de Recompensa |
-|---------|---------|------------------------------|
-| Curto   | 7 dias  | 5% de bônus (1.05x)         |
-| Médio   | 14 dias | 10% de bônus (1.10x)        |
-| Longo   | 30 dias | 20% de bônus (1.20x)        |
-| Premium | 90 dias | 40% de bônus (1.40x)        |
-| Elite   | 180 dias| 50% de bônus (1.50x)        |
-
-## Arquitetura do Contrato
-
-O contrato utiliza o framework Anchor para Solana e inclui as seguintes contas e estruturas:
-
-### Contas principais
-- `NFTMetadata`: Armazena metadados de NFTs
-- `ConfigAccount`: Configurações gerais e parâmetros do contrato
-- `StakeAccount`: Rastreia informações de staking para cada usuário
-
-### Instruções Principais
-- `initialize_collection`: Configura a coleção de NFTs
-- `mint_nft`: Minta um NFT simples
-- `mint_nft_with_payment`: Minta um NFT com pagamento em tokens
-- `stake_tokens`: Faz stake de tokens por um período específico
-- `unstake_tokens`: Resgata tokens após o período de staking
-- `set_payment_token`: Define o token usado para pagamentos
-- `configure_staking`: Configura parâmetros de staking
-- `set_emergency_pause`: Pausa o contrato em caso de emergência
-- `update_admin`: Atualiza o administrador do contrato
-- `update_max_stake_amount`: Altera o valor máximo permitido para stake
-
-## Mecanismos de Segurança
-
-O contrato implementa diversos mecanismos de segurança:
-
-1. **Verificações de Autorização**: Apenas o administrador pode executar funções administrativas
-2. **Proteções contra Overflow**: Cálculos matemáticos seguros em todas as operações
-3. **Verificações de Entrada**: Validação de todas as entradas do usuário
-4. **Limites de Valor**: Restrições nos valores máximos de stake
-5. **Pausa de Emergência**: Capacidade de pausar o contrato em caso de problemas
-6. **Eventos**: Registro detalhado de operações críticas para auditoria
-
-## Eventos
-
-O contrato emite o seguinte evento personalizado:
-
-### TokenBurnEvent
-Registra informações quando tokens são queimados como pagamento:
-- `payer`: Endereço da carteira que fez o pagamento
-- `token_mint`: Endereço do token que foi queimado
-- `amount`: Quantidade de tokens queimados
-- `nft_mint`: Endereço do NFT mintado com este pagamento
-- `timestamp`: Momento da transação
-
-## Configuração do Ambiente de Desenvolvimento
-
-### Pré-requisitos
-- Solana CLI
-- Rust
-- Anchor Framework
-- Node.js e npm
-
-### Instalação
+## Setup do Ambiente
 
 ```bash
 # Instalar dependências
@@ -83,60 +22,190 @@ npm install
 # Construir o programa
 anchor build
 
-# Implantar o programa
-anchor deploy
+# Configurar sua wallet para testes (se ainda não tiver uma)
+solana-keygen new -o wallet-dev.json
+
+# Obter SOL da devnet para sua wallet
+solana airdrop 2 $(solana address -k wallet-dev.json) --url devnet
 ```
 
-### Testes
+## Deploy e Configuração
+
+O projeto já está configurado para deploy na devnet. Veja o arquivo DEPLOYMENT_SUMMARY.md para mais detalhes.
 
 ```bash
-# Executar todos os testes
-anchor test
+# Deploy do programa na devnet
+node scripts/deploy-program.js
 
-# Executar testes específicos
-anchor test -- -k "nome_do_teste"
+# Criar um token para testes (se não for usar um token existente)
+node scripts/create-token.js
+
+# OU configurar um token Pumpfun existente
+# Edite o arquivo scripts/set-pumpfun-token.js primeiro
+node scripts/set-pumpfun-token.js
+
+# Configurar uma carteira personalizada como reserva
+# Edite o arquivo scripts/set-custom-reserve.js primeiro
+node scripts/set-custom-reserve.js
+
+# Inicializar a reserva de recompensas
+node scripts/initialize-reward-reserve.js
+
+# Depositar tokens na reserva para recompensas
+node scripts/deposit-rewards.js
+
+# Configurar o sistema de staking
+node scripts/configure-staking.js
 ```
 
-### Testando o Sistema de Staking
+## Testar Staking e Unstaking
 
-O sistema de staking inclui períodos de 7, 14, 30, 90 e 180 dias, cada um com um multiplicador de recompensa diferente. Para testar o unstake, existem duas abordagens:
+Para testar o sistema de staking, você pode usar os scripts:
 
-1. **Em ambiente de desenvolvimento**: Use o arquivo `tests/stake_and_unstake.ts` para simular e visualizar como o unstake funcionaria em diferentes cenários.
+```bash
+# Fazer stake de tokens
+node scripts/test-stake-tokens.js
 
-2. **Em ambiente de produção**: O fluxo de teste real segue estas etapas:
-   - Fazer stake de tokens
-   - Esperar o período de staking terminar (7, 14, 30, 90 ou 180 dias)
-   - Chamar a função `unstake_tokens`
-   - Verificar que os tokens originais foram devolvidos e as recompensas recebidas
+# Aguardar o período de staking terminar (os períodos de teste são curtos)
+# 1, 2, 5, 10 ou 30 minutos
 
-#### Demonstração de APY por Período
+# Fazer unstake e receber recompensas
+node scripts/test-unstake-tokens.js
+```
 
-Para um stake de 1000 tokens com taxa base de 10%:
+### Parâmetros Configuráveis
 
-| Período | Recompensa | Total após período | APY Equivalente |
-|---------|------------|-------------------|-----------------|
-| 7 dias  | 105 tokens | 1105 tokens        | 260.71%         |
-| 14 dias | 110 tokens | 1110 tokens        | 260.71%         |
-| 30 dias | 120 tokens | 1120 tokens        | 243.33%         |
-| 90 dias | 140 tokens | 1140 tokens        | 162.22%         |
-| 180 dias| 150 tokens | 1150 tokens        | 101.39%         |
+Você pode editar estes scripts para ajustar:
 
-*Nota: A APY (Annual Percentage Yield) é calculada considerando a composta anual dos retornos.*
+- **Quantidade de tokens**: Modifique a variável `amount` em test-stake-tokens.js
+- **Período de staking**: Altere para `StakingPeriod.Minutes1`, `StakingPeriod.Minutes2`, etc.
+- **Taxa de recompensa**: Ajuste `REWARD_RATE` em configure-staking.js (10000 = 100%)
 
-## Considerações para Produção
+## Estrutura do Programa
 
-Antes de implantar em produção, recomenda-se:
+- `programs/adr_token_mint/src/lib.rs`: Implementação do programa Solana/Anchor
+- `scripts/`: Scripts de deploy e configuração
+- `config/`: Arquivos de configuração e informações de deploy
 
-1. Realizar uma auditoria de segurança com especialistas
-2. Executar testes extensivos em ambiente de pré-produção
-3. Configurar monitoramento para detectar atividades suspeitas
-4. Planejar procedimentos de resposta a incidentes
-5. Documentar claramente os riscos para os usuários finais
+## Períodos de Staking e Multiplicadores
 
-## Licença
+| Período | Multiplicador de Recompensa |
+|---------|----------------------------|
+| 1 minuto | 1.05x (5% de bônus) |
+| 2 minutos | 1.10x (10% de bônus) |
+| 5 minutos | 1.20x (20% de bônus) |
+| 10 minutos | 1.40x (40% de bônus) |
+| 30 minutos | 1.50x (50% de bônus) |
 
-[Inserir informações de licença]
+## Detalhes de Implementação
 
-## Contribuições
+- Tokens são queimados (burned) quando um NFT é mintado
+- Tokens staked são bloqueados pelo período escolhido
+- Recompensas são calculadas com base no período e na taxa configurada
+- Ao fazer unstake, o usuário recebe seus tokens originais + recompensas
+- Recompensas são transferidas da reserva para o usuário
 
-[Instruções para contribuidores] 
+## Segurança e Administração
+
+- O admin tem controle sobre configurações do sistema
+- O sistema pode ser pausado para emergências
+- Taxas de recompensa podem ser ajustadas
+- Os multiplicadores por período são definidos no programa
+
+## Status Atual
+
+- ✅ Token de pagamento (FPP2rgo9dP2VUoUgacQS8hZGkeKdVhEJzqugRsGpJSe8) criado com sucesso
+- ✅ Informações da coleção NFT preparadas
+- ❌ Inicialização on-chain da coleção pendente (devido a problemas de compatibilidade do Anchor)
+- ❌ Configuração on-chain do token de pagamento pendente
+
+## Desafios Encontrados
+
+Ao tentar inicializar o programa, encontramos os seguintes problemas:
+
+1. **Incompatibilidade com a versão do Anchor**
+   - Erro "Cannot use 'in' operator to search for 'vec' in pubkey"
+   - A versão atual do Anchor não é compatível com algumas chamadas no código
+
+2. **Dificuldade em serializar instruções diretamente**
+   - Tentativas de usar web3.js diretamente para inicializar o programa encontraram erros
+   - A serializaçao correta das instruções Anchor requer conhecimento detalhado do programa
+
+## Soluções Propostas
+
+### Opção 1: Migração para Novo Projeto (Recomendada)
+
+Esta opção cria um novo projeto Anchor com a versão mais recente e migra o programa para ele.
+
+```bash
+# Gerar script de migração
+anchor run migrate
+
+# Executar o script
+bash migrate.sh
+
+# Após a migração, no novo diretório:
+cd ../novo-adr-token
+anchor build
+anchor deploy
+
+# Inicializar o programa
+anchor run init-collection
+anchor run config-token
+```
+
+### Opção 2: Atualizar o Anchor Atual
+
+```bash
+anchor run update
+yarn install
+npm install -g @project-serum/anchor-cli@^0.26.0
+anchor build
+```
+
+### Opção 3: Inicialização Manual Direta
+
+```bash
+anchor run export-keypairs
+anchor run direct-init
+anchor run direct-config
+```
+
+## Comandos Disponíveis
+
+Para ver todos os comandos disponíveis, consulte o arquivo Anchor.toml. Alguns dos mais importantes:
+
+- `anchor run create-token` - Cria o token de pagamento
+- `anchor run check` - Verifica o estado atual do programa
+- `anchor run direct-guide` - Mostra o guia atualizado com instruções detalhadas
+- `anchor run migrate` - Gera o script de migração
+- `anchor run simple-config` - Registra informações do token de forma offline
+
+## Estrutura do Token
+
+- **Token Mint:** FPP2rgo9dP2VUoUgacQS8hZGkeKdVhEJzqugRsGpJSe8
+- **Decimais:** 9
+- **Quantidade Inicial:** 10,000,000
+- **Proprietário:** Wallet do desenvolvedor
+
+## Próximos Passos
+
+1. Seguir a estratégia de migração para criar um novo projeto com Anchor atualizado
+2. Concluir a inicialização da coleção
+3. Configurar o token de pagamento no programa
+4. Testar a funcionalidade de mintagem de NFTs
+5. Configurar e testar o sistema de staking
+
+## Arquivos Importantes
+
+- `programs/adr_token_mint/src/lib.rs` - Código do contrato inteligente
+- `scripts/` - Scripts auxiliares para implantação e inicialização
+- `token-info.json` - Informações do token de pagamento
+- `collection-info.json` - Informações da coleção NFT
+- `migrate.sh` - Script de migração para novo projeto
+
+## Recursos
+
+- [Documentação do Anchor](https://www.anchor-lang.com/)
+- [Documentação do Solana](https://docs.solana.com/)
+- [SPL Token](https://spl.solana.com/token) 
